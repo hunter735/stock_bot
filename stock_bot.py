@@ -6,43 +6,41 @@ from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 import os
 import smtplib
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-import time
+import requests
+from whatsapp_api_client_python import API
 from dotenv import load_dotenv
 
 import warnings
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
-# Safe import for Tamil dates
-try:
-    from tamil.date import datetime as tamil_dt
-    tamil_enabled = True
-except ImportError:
-    tamil_enabled = False
-    
 load_dotenv()
 
 # --- MASTER CONFIGURATION ---
 SENDER_EMAIL = "cselvakumar735@gmail.com"
 SENDER_PASSWORD = os.getenv('EMAIL_PASS')
+ID_INSTANCE = os.getenv('ID_INSTANCE')
+API_TOKEN = os.getenv('API_TOKEN')
 
-# Define Profiles for both you and your wife
+MY_PHONE = os.getenv('MY_WA_PHONE')
+WIFE_PHONE = os.getenv('WIFE_WA_PHONE')
+
 PROFILES = [
     {
         "name": "Selvakumar",
         "receiver": "cselvakumar735@gmail.com",
-        "portfolio": {
-            'TATAGOLD.NS': {'shares': 5, 'avg_price': 16.1},
-        },
-        "prefix": "Sfin"  # File name prefix
+        "wa_phone": MY_PHONE,
+        "portfolio": {'TATAGOLD.NS': {'shares': 5, 'avg_price': 16.1}},
+        "prefix": "Sfin"
     },
     {
         "name": "Annalakshmi",
         "receiver": "selvakumarannalakshmi22@gmail.com",
+        "wa_phone": WIFE_PHONE,
         "portfolio": {
             'TATAGOLD.NS': {'shares': 9, 'avg_price': 13.04},
             'TATSILV.NS': {'shares': 8, 'avg_price': 26.13},
@@ -65,7 +63,7 @@ def get_portfolio_data(portfolio):
             pl_percent = (pl / cost_basis) * 100 if cost_basis != 0 else 0
             
             data.append({
-                'Date': today, 'Ticker': ticker, 'Shares': info['shares'],
+                'Date': today, 'Ticker': ticker, 'Qty': info['shares'],
                 'Avg': info['avg_price'], 'Live': round(current_price, 2),
                 'PL': round(pl, 2), 'PL_Percent': round(pl_percent, 2)
             })
@@ -74,14 +72,12 @@ def get_portfolio_data(portfolio):
     return pd.DataFrame(data)
 
 def create_visuals(df, prefix):
-    # Pie Chart
     plt.figure(figsize=(6, 4))
-    plt.pie(df['Shares'] * df['Live'], labels=df['Ticker'], autopct='%1.1f%%', colors=sns.color_palette('pastel'))
+    plt.pie(df['Qty'] * df['Live'], labels=df['Ticker'], autopct='%1.1f%%', colors=sns.color_palette('pastel'))
     plt.title('Portfolio Distribution')
     plt.savefig(f'{prefix}_pie_chart.png')
     plt.close()
 
-    # Bar Chart
     plt.figure(figsize=(6, 4))
     sns.barplot(x='Ticker', y='PL', data=df, hue='Ticker', palette='RdYlGn', legend=False)
     plt.axhline(0, color='black', linewidth=0.8)
@@ -96,81 +92,97 @@ class PortfolioPDF(FPDF):
         self.ln(5)
 
 def create_pdf_report(df, prefix, name):
-    csv_file = f"{prefix}ance.csv"
-    pdf_file = f"{prefix}ance_report.pdf"
-    
-    df.to_csv(csv_file, mode='a', index=False, header=not os.path.exists(csv_file))
-
+    pdf_file = f"{prefix}_report.pdf"
     pdf = PortfolioPDF()
     pdf.add_page()
     pdf.set_font('helvetica', 'B', 12)
     pdf.cell(0, 10, f"Report for: {name}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     
-    # Table Header
     pdf.set_font('helvetica', 'B', 10)
     cols = ['Date', 'Ticker', 'Qty', 'Avg', 'Live', 'P&L', 'P&L%']
-    pdf.set_fill_color(52, 152, 219); pdf.set_text_color(255)
-    for col in cols: pdf.cell(27, 10, col, border=1, align='C', fill=True)
+    pdf.set_fill_color(52, 152, 219)
+    pdf.set_text_color(255)
+    for col in cols:
+        pdf.cell(27, 10, col, border=1, align='C', fill=True)
     pdf.ln()
 
-    # Table Body
-    pdf.set_font('helvetica', '', 9); pdf.set_text_color(0)
+    pdf.set_font('helvetica', '', 9)
     for _, row in df.iterrows():
         color = (0, 128, 0) if row['PL'] >= 0 else (255, 0, 0)
         pdf.set_text_color(*color)
-        for item in row.values: pdf.cell(27, 10, str(item), border=1, align='C')
+        pdf.cell(27, 10, str(row['Date']), border=1, align='C')
+        pdf.cell(27, 10, str(row['Ticker']), border=1, align='C')
+        pdf.cell(27, 10, str(row['Qty']), border=1, align='C')
+        pdf.cell(27, 10, str(row['Avg']), border=1, align='C')
+        pdf.cell(27, 10, str(row['Live']), border=1, align='C')
+        pdf.cell(27, 10, str(row['PL']), border=1, align='C')
+        pdf.cell(27, 10, str(row['PL_Percent']), border=1, align='C')
         pdf.ln()
 
-    # Images
     pdf.ln(10)
     pdf.set_text_color(0)
     pdf.image(f'{prefix}_pie_chart.png', x=10, y=pdf.get_y(), w=90)
-    pdf.image(f'{prefix}_bar_chart.png', x=105, y=pdf.get_y(), w=90)
+    if os.path.exists(f'{prefix}_bar_chart.png'):
+        pdf.image(f'{prefix}_bar_chart.png', x=105, y=pdf.get_y(), w=90)
+    
     pdf.output(pdf_file)
     return pdf_file
 
 def send_email(receiver, pdf_path, name):
     msg = MIMEMultipart()
-    msg['From'], msg['To'], msg['Subject'] = SENDER_EMAIL, receiver, f"Stock Visual Report - {name}"
+    msg['From'], msg['To'], msg['Subject'] = SENDER_EMAIL, receiver, f"Visual Stock Report - {name}"
     msg.attach(MIMEText(f"Hello {name}, your visual portfolio report is attached.", 'plain'))
-
     with open(pdf_path, "rb") as f:
         part = MIMEBase('application', 'octet-stream')
-        part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header('Content-Disposition', f"attachment; filename={pdf_path}")
+        part.set_payload(f.read()); encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f"attachment; filename={os.path.basename(pdf_path)}")
         msg.attach(part)
-
     with smtplib.SMTP('smtp.gmail.com', 587) as server:
-        server.starttls()
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
-        server.send_message(msg)
+        server.starttls(); server.login(SENDER_EMAIL, SENDER_PASSWORD); server.send_message(msg)
+
+def send_whatsapp_green(wa_phone, name, df, total_pl):
+    if not ID_INSTANCE or not API_TOKEN: return
+    try:
+        green_api = API.GreenApi(ID_INSTANCE, API_TOKEN)
+        chat_id = f"{wa_phone}@c.us"
+        
+        # வாட்ஸ்அப் செய்திக்கான விரிவான தகவல்கள்
+        emoji_total = "📈" if total_pl >= 0 else "📉"
+        message = f"🔔 *Live Update*\nவணக்கம் {name} {emoji_total}\n\n*பங்கு விவரங்கள்:*\n"
+        
+        for _, row in df.iterrows():
+            ticker = row['Ticker']
+            qty = row['Qty']
+            pl = row['PL']
+            icon = "✅" if pl >= 0 else "❌"
+            message += f"• {ticker} ({qty} Qty): {icon} ரூ. {pl:.2f}\n"
+        
+        status = "மொத்த இலாபம்" if total_pl >= 0 else "மொத்த நஷ்டம்"
+        message += f"\n💰 *{status}: ரூ. {total_pl:.2f}*"
+        
+        green_api.sending.sendMessage(chatId=chat_id, message=message)
+        print(f"WhatsApp sent to {name}")
+    except Exception as e:
+        print(f"WA Error: {e}")
 
 if __name__ == "__main__":
-    for person in PROFILES:
-        print(f"Processing report for {person['name']}...")
-        
-        # 1. Get Data
-        df = get_portfolio_data(person['portfolio'])
-        
-        if not df.empty:
-            # 2. Visuals
-            create_visuals(df, person['prefix'])
-            
-            # 3. PDF
-            report_path = create_pdf_report(df, person['prefix'], person['name'])
-            
-            # 4. Email
-            try:
-                send_email(person['receiver'], report_path, person['name'])
-                
-                # Tamil Date/Time Output
-                if tamil_enabled:
-                    # இது "புதன்கிழமை, 28 ஜனவரி 2026" என அச்சிடும்
-                    print(tamil_dt.now().strftime_ta("%A, %d %B %Y"))
-                
-                print(datetime.now().strftime("%I:%M:%S %p"))
-                print(f"வெற்றி!, {person['name']}-க்கு மின்னஞ்சல் அனுப்பப்பட்டது.\n")
+    ist_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=5, minutes=30)
+    current_hour = ist_now.hour
+    print(f"Current IST: {ist_now.strftime('%I:%M %p')}")
 
-            except Exception as e:
-                print(f"மின்னஞ்சல் தோல்வி ({person['name']}): {e}\n")
+    for person in PROFILES:
+        print(f"Processing {person['name']}...")
+        df = get_portfolio_data(person['portfolio'])
+        if not df.empty:
+            total_pl = df['PL'].sum()
+            # விரிவான தகவலுடன் வாட்ஸ்அப் மெசேஜ்
+            send_whatsapp_green(person['wa_phone'], person['name'], df, total_pl)
+            
+            if current_hour in [10, 15]:
+                create_visuals(df, person['prefix'])
+                report_path = create_pdf_report(df, person['prefix'], person['name'])
+                try:
+                    send_email(person['receiver'], report_path, person['name'])
+                    print(f"Email sent to {person['name']}.")
+                except Exception as e:
+                    print(f"Email failed: {e}")
