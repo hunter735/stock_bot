@@ -1,0 +1,7 @@
+yfinance
+pandas
+matplotlib
+seaborn
+fpdf2
+python-dotenv
+tamil
