@@ -31,5 +31,9 @@ jobs:
       - name: Run Python script
         env:
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+          ID_INSTANCE: ${{ secrets.ID_INSTANCE }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+          MY_WA_PHONE: ${{ secrets.MY_WA_PHONE }}    # புதிய வரி
+          WIFE_WA_PHONE: ${{ secrets.WIFE_WA_PHONE }}
         # 'python' என்பதற்கு பதில் 'uv run' பயன்படுத்துவது சிறந்தது
         run: uv run stock_bot.py
