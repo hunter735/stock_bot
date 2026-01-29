@@ -4,7 +4,7 @@ on:
   schedule:
     # திங்கள் முதல் வெள்ளி வரை மட்டும் (MON-FRI)
     # காலை 10:00 AM IST (4:30 AM UTC) மற்றும் மதியம் 3:00 PM IST (9:30 AM UTC)
-    - cron: '30 4,9 * * 1-5'
+    - cron: '30 4-9 * * 1-5'
   workflow_dispatch: # கைமுறையாக இயக்க உதவும்
 
 jobs:
