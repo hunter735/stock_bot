@@ -1,0 +1,11 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Uv specific (Optional, but good to have)
+.uv/
