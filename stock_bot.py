@@ -189,7 +189,7 @@ if __name__ == "__main__":
             # காலை 9:45 (9 AM மற்றும் 45 - 55 நிமிடங்களுக்குள்) 
             # அல்லது மாலை 3:00 (15 PM மற்றும் 0 - 10 நிமிடங்களுக்குள்)
             is_morning_mail = (current_hour == 9 and 40 <= current_minute <= 59)
-            is_evening_mail = (current_hour == 15 and 0 <= current_minute <= 10)
+            is_evening_mail = (current_hour == 15 and 0 <= current_minute <= 15)
 
             if is_morning_mail or is_evening_mail:
                 create_visuals(df, person['prefix'])
