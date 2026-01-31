@@ -1,5 +1,8 @@
 name: Daily Stock Report Bot
 
+permissions:
+  contents: write
+
 on:
   schedule:
     # திங்கள் முதல் வெள்ளி வரை மட்டும் (MON-FRI)
@@ -9,8 +12,7 @@ on:
     - cron: '0,45 4-8 * * 1-5'  # 10:15 முதல் 2:15 வரை
     - cron: '30 9 * * 1-5'      # 3:00 PM IST (9:30 UTC)
   workflow_dispatch: # கைமுறையாக இயக்க உதவும்
-permissions:
-  contents: write
+  
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -47,8 +49,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add portfolio_history.db *.pdf *.png
-          # சேஞ்சஸ் இருந்தால் மட்டும் கமிட் செய்யும்
-          git commit -m "Auto-update DB & Reports: $(date)" || echo "No changes to commit"
-          git push
+          
+          # புதிய கோப்புகள் இருந்தால் அவற்றைச் சேர்க்கும்
+          git add portfolio_history.db *.pdf *.png || echo "No files to add"
+          
+          # மாற்றங்கள் இருந்தால் மட்டும் Commit செய்யும், இல்லையென்றால் அடுத்த கட்டத்திற்குச் செல்லும்
+          if [ -n "$(git status --portion)" ]; then
+            git commit -m "Auto-update: $(date +'%Y-%m-%d %H:%M')"
+            git push origin main
+          else
+            echo "No changes to commit today."
+          fi
         
