@@ -17,7 +17,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4 # புதிய version 4-க்கு மாற்றப்பட்டுள்ளது
-
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }} # புஷ் செய்ய அனுமதி அளிக்கிறது
+          
       - name: Install uv
         uses: astral-sh/setup-uv@v5 # uv-ஐ நிறுவுகிறது
         with:
@@ -40,3 +42,12 @@ jobs:
           WIFE_WA_PHONE: ${{ secrets.WIFE_WA_PHONE }}
         # 'python' என்பதற்கு பதில் 'uv run' பயன்படுத்துவது சிறந்தது
         run: uv run stock_bot.py
+      - name: Commit and Push changes (Database & Reports)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add portfolio_history.db *.pdf *.png
+          # சேஞ்சஸ் இருந்தால் மட்டும் கமிட் செய்யும்
+          git commit -m "Auto-update DB & Reports: $(date)" || echo "No changes to commit"
+          git push
+        
