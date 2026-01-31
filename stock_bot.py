@@ -5,6 +5,7 @@ import seaborn as sns
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 import os
+import sqlite3
 import smtplib
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
@@ -14,8 +15,8 @@ from email import encoders
 import requests
 from whatsapp_api_client_python import API
 from dotenv import load_dotenv
-
 import warnings
+
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 load_dotenv()
@@ -25,7 +26,6 @@ SENDER_EMAIL = "cselvakumar735@gmail.com"
 SENDER_PASSWORD = os.getenv('EMAIL_PASS')
 ID_INSTANCE = os.getenv('ID_INSTANCE')
 API_TOKEN = os.getenv('API_TOKEN')
-
 MY_PHONE = os.getenv('MY_WA_PHONE')
 WIFE_PHONE = os.getenv('WIFE_WA_PHONE')
 
@@ -49,10 +49,24 @@ PROFILES = [
         "prefix": "Afin"
     }
 ]
+def init_db():
+    conn = sqlite3.connect('portfolio_history.db')
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS history 
+        (date TEXT, name TEXT, ticker TEXT, qty REAL, live_price REAL, pl REAL)''')
+    conn.commit()
+    conn.close()
+
+def save_to_db(df, name):
+    conn = sqlite3.connect('portfolio_history.db')
+    df_to_save = df.copy()
+    df_to_save['name'] = name
+    df_to_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL']].to_sql('history', conn, if_exists='append', index=False)
+    conn.close()
 
 def get_portfolio_data(portfolio):
     data = []
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
     for ticker, info in portfolio.items():
         try:
             stock = yf.Ticker(ticker)
@@ -165,10 +179,8 @@ def send_whatsapp_green(wa_phone, name, df, total_pl):
     except Exception as e:
         print(f"WA Error: {e}")
 
-# ... (முந்தைய கோப்பில் உள்ள மற்ற அனைத்து பகுதிகளும் அப்படியே இருக்கட்டும்) ...
-
 if __name__ == "__main__":
-    # IST நேரத்தை UTC-யிலிருந்து கணக்கிடுதல்
+    init_db()
     ist_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=5, minutes=30)
     current_hour = ist_now.hour
     current_minute = ist_now.minute
@@ -178,16 +190,11 @@ if __name__ == "__main__":
     for person in PROFILES:
         print(f"Processing {person['name']}...")
         df = get_portfolio_data(person['portfolio'])
-        
         if not df.empty:
             total_pl = df['PL'].sum()
-            
-            # 1. வாட்ஸ்அப் (அனைத்து ரன்களிலும் செல்லும்: 9:20 முதல் 3:10 வரை)
+            save_to_db(df, person['name'])
             send_whatsapp_green(person['wa_phone'], person['name'], df, total_pl)
 
-            # 2. மின்னஞ்சல் நேரம்: 
-            # காலை 9:45 (9 AM மற்றும் 45 - 55 நிமிடங்களுக்குள்) 
-            # அல்லது மாலை 3:00 (15 PM மற்றும் 0 - 10 நிமிடங்களுக்குள்)
             is_morning_mail = (current_hour == 9 and 40 <= current_minute <= 59)
             is_evening_mail = (current_hour == 15 and 0 <= current_minute <= 15)
 
