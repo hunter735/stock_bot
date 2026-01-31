@@ -50,9 +50,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # புதிய கோப்புகள் இருந்தால் அவற்றைச் சேர்க்கும்
-          git add portfolio_history.db *.pdf *.png || echo "No files to add"
-          
+          git add -f portfolio_history.db|| echo "No reports"          
           # மாற்றங்கள் இருந்தால் மட்டும் Commit செய்யும், இல்லையென்றால் அடுத்த கட்டத்திற்குச் செல்லும்
           if [ -n "$(git status --portion)" ]; then
             git commit -m "Auto-update: $(date +'%Y-%m-%d %H:%M')"
