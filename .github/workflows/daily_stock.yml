@@ -9,7 +9,8 @@ on:
     - cron: '0,45 4-8 * * 1-5'  # 10:15 முதல் 2:15 வரை
     - cron: '30 9 * * 1-5'      # 3:00 PM IST (9:30 UTC)
   workflow_dispatch: # கைமுறையாக இயக்க உதவும்
-
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
