@@ -61,12 +61,16 @@ def init_db():
 
 def save_to_db(df, name):
     conn = sqlite3.connect('portfolio_history.db')
+    # டேபிள் இருப்பதை உறுதி செய்ய இங்கே மீண்டும் ஒருமுறை
+    conn.execute('''CREATE TABLE IF NOT EXISTS history 
+        (Date TEXT, name TEXT, Ticker TEXT, Qty REAL, Live REAL, PL REAL)''')
+    
     df_to_save = df.copy()
     df_to_save['name'] = name
-    # DataFrame-ல் உள்ள காலம்களும் SQL டேபிளில் உள்ள காலம்களும் சரியாக இருக்க வேண்டும்
     df_to_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL']].to_sql('history', conn, if_exists='append', index=False)
+    conn.commit() # இதைச் சேர்ப்பது மிகவும் முக்கியம்!
     conn.close()
-    print(f"✅ {name} தரவுகள் டேட்டாபேஸில் சேமிக்கப்பட்டது.")
+    print(f"✅ Data saved for {name}")
 
 def get_portfolio_data(portfolio):
     data = []
