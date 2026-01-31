@@ -52,8 +52,10 @@ PROFILES = [
 def init_db():
     conn = sqlite3.connect('portfolio_history.db')
     cursor = conn.cursor()
+    # இங்கே 'live_price' என்பதற்கு பதில் 'Live' என்றே கொடுத்துவிடுவோம், 
+    # அப்போதுதான் Pandas DataFrame-உடன் ஒத்துப்போகும்.
     cursor.execute('''CREATE TABLE IF NOT EXISTS history 
-        (date TEXT, name TEXT, ticker TEXT, qty REAL, live_price REAL, pl REAL)''')
+        (Date TEXT, name TEXT, Ticker TEXT, Qty REAL, Live REAL, PL REAL)''')
     conn.commit()
     conn.close()
 
@@ -61,8 +63,10 @@ def save_to_db(df, name):
     conn = sqlite3.connect('portfolio_history.db')
     df_to_save = df.copy()
     df_to_save['name'] = name
+    # DataFrame-ல் உள்ள காலம்களும் SQL டேபிளில் உள்ள காலம்களும் சரியாக இருக்க வேண்டும்
     df_to_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL']].to_sql('history', conn, if_exists='append', index=False)
     conn.close()
+    print(f"✅ {name} தரவுகள் டேட்டாபேஸில் சேமிக்கப்பட்டது.")
 
 def get_portfolio_data(portfolio):
     data = []
