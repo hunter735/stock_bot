@@ -56,7 +56,7 @@ def get_portfolio_data(portfolio):
     for ticker, info in portfolio.items():
         try:
             stock = yf.Ticker(ticker)
-            current_price = stock.fast_info['last_price']
+            current_price = stock.history(period='1d')['Close'].iloc[-1]
             cost_basis = info['shares'] * info['avg_price']
             market_val = info['shares'] * current_price
             pl = market_val - cost_basis
