@@ -12,16 +12,15 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-import requests
 from whatsapp_api_client_python import API
 from dotenv import load_dotenv
 import warnings
 
+# பிழைகளைத் தவிர்க்க
 warnings.filterwarnings("ignore", category=SyntaxWarning)
-
 load_dotenv()
 
-# --- MASTER CONFIGURATION ---
+# --- CONFIGURATION (GitHub Secrets) ---
 SENDER_EMAIL = "cselvakumar735@gmail.com"
 SENDER_PASSWORD = os.getenv('EMAIL_PASS')
 ID_INSTANCE = os.getenv('ID_INSTANCE')
@@ -29,131 +28,112 @@ API_TOKEN = os.getenv('API_TOKEN')
 MY_PHONE = os.getenv('MY_WA_PHONE')
 WIFE_PHONE = os.getenv('WIFE_WA_PHONE')
 
-PROFILES = [
-    {
-        "name": "Selvakumar",
-        "receiver": "cselvakumar735@gmail.com",
-        "wa_phone": MY_PHONE,
-        "portfolio": {'TATAGOLD.NS': {'shares': 5, 'avg_price': 16.1}},
-        "prefix": "Sfin"
-    },
-    {
-        "name": "Annalakshmi",
-        "receiver": "selvakumarannalakshmi22@gmail.com",
-        "wa_phone": WIFE_PHONE,
-        "portfolio": {
-            'TATAGOLD.NS': {'shares': 9, 'avg_price': 13.04},
-            'TATSILV.NS': {'shares': 8, 'avg_price': 26.13},
-            'SETFGOLD.NS': {'shares': 1, 'avg_price': 116.85}
-        },
-        "prefix": "Afin"
-    }
-]
+# --- 1. அழகான விடுமுறை வாழ்த்து ---
+def check_holiday_from_csv():
+    try:
+        h_df = pd.read_csv('holidays.csv')
+        today = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%Y-%m-%d')
+        match = h_df[h_df['Date'] == today]
+        if not match.empty:
+            msg = match.iloc[0]['Message']
+            return f"✨ *சிறப்பு அறிவிப்பு* ✨\n\n{msg}\n\n🏖️ *இன்று ஓய்வெடுங்கள், மீண்டும் நாளை சந்திப்போம்!*"
+    except:
+        return None
+    return None
+
+# --- 2. வரி மதிப்பீடு ---
+def estimate_tax(buy_date_str, pl):
+    if pl <= 0: return "வரி இல்லை"
+    try:
+        buy_date = datetime.strptime(buy_date_str, '%Y-%m-%d')
+        days = (datetime.now() - buy_date).days
+        if days < 365:
+            return f"STCG(20%): ₹{round(pl * 0.20, 1)}"
+        else:
+            taxable = max(0, pl - 125000)
+            return f"LTCG(12.5%): ₹{round(taxable * 0.125, 1)}"
+    except:
+        return "தேதி பிழை"
+
+# --- 3. தரவுத்தளம் மற்றும் கோப்புகள் ---
 def init_db():
     conn = sqlite3.connect('portfolio_history.db')
-    cursor = conn.cursor()
-    # இங்கே 'live_price' என்பதற்கு பதில் 'Live' என்றே கொடுத்துவிடுவோம், 
-    # அப்போதுதான் Pandas DataFrame-உடன் ஒத்துப்போகும்.
-    cursor.execute('''CREATE TABLE IF NOT EXISTS history 
-        (Date TEXT, name TEXT, Ticker TEXT, Qty REAL, Live REAL, PL REAL)''')
-    conn.commit()
+    conn.execute('''CREATE TABLE IF NOT EXISTS history 
+        (Date TEXT, name TEXT, Ticker TEXT, Qty REAL, Live REAL, PL REAL, Tax_Est TEXT)''')
     conn.close()
 
 def save_to_db(df, name):
     conn = sqlite3.connect('portfolio_history.db')
-    # டேபிள் இருப்பதை உறுதி செய்ய இங்கே மீண்டும் ஒருமுறை
-    conn.execute('''CREATE TABLE IF NOT EXISTS history 
-        (Date TEXT, name TEXT, Ticker TEXT, Qty REAL, Live REAL, PL REAL)''')
-    
-    df_to_save = df.copy()
-    df_to_save['name'] = name
-    df_to_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL']].to_sql('history', conn, if_exists='append', index=False)
-    conn.commit() # இதைச் சேர்ப்பது மிகவும் முக்கியம்!
+    df_save = df.copy()
+    df_save['name'] = name
+    df_save.rename(columns={'Tax_Estimate': 'Tax_Est'}, inplace=True)
+    df_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL', 'Tax_Est']].to_sql('history', conn, if_exists='append', index=False)
     conn.close()
-    print(f"✅ Data saved for {name}")
 
-def get_portfolio_data(portfolio):
-    data = []
-    today = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=5, minutes=30))).strftime("%Y-%m-%d %H:%M")
-    for ticker, info in portfolio.items():
-        try:
-            stock = yf.Ticker(ticker)
-            current_price = stock.history(period='1d')['Close'].iloc[-1]
-            cost_basis = info['shares'] * info['avg_price']
-            market_val = info['shares'] * current_price
-            pl = market_val - cost_basis
-            pl_percent = (pl / cost_basis) * 100 if cost_basis != 0 else 0
-            
-            data.append({
-                'Date': today, 'Ticker': ticker, 'Qty': info['shares'],
-                'Avg': info['avg_price'], 'Live': round(current_price, 2),
-                'PL': round(pl, 2), 'PL_Percent': round(pl_percent, 2)
-            })
-        except Exception as e:
-            print(f"Error fetching {ticker}: {e}")
-    return pd.DataFrame(data)
+# --- 4. வாட்ஸ்அப் மெசேஜ் டெக்கரேஷன் ---
+def send_whatsapp_green(wa_phone, name, df, total_pl):
+    try:
+        green_api = API.GreenApi(ID_INSTANCE, API_TOKEN)
+        chat_id = f"{wa_phone}@c.us"
+        ist_time = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime('%I:%M %p')
+        emoji_main = "🚀" if total_pl >= 0 else "📉"
+        
+        message = f"🌟 *பங்குச்சந்தை நேரலை அறிக்கை* 🌟\n"
+        message += f"━━━━━━━━━━━━━━━━━━\n"
+        message += f"👤 *உரிமையாளர்:* {name}\n"
+        message += f"⏰ *நேரம்:* {ist_time}\n"
+        message += f"━━━━━━━━━━━━━━━━━━\n\n"
 
+        for _, r in df.iterrows():
+            icon = "🟢" if r['PL'] >= 0 else "🔴"
+            message += f"{icon} *{r['Ticker']}*\n"
+            message += f"   └ லாபம்/நஷ்டம்: *ரூ. {r['PL']:.2f}*\n"
+            message += f"   └ வரி: _{r['Tax_Estimate']}_\n\n"
+
+        message += f"━━━━━━━━━━━━━━━━━━\n"
+        status_icon = "💰" if total_pl >= 0 else "⚠️"
+        message += f"{status_icon} *இன்றைய மொத்த நிலை:* \n"
+        message += f"👉 *ரூ. {total_pl:,.2f}* {emoji_main}\n"
+        message += f"━━━━━━━━━━━━━━━━━━\n"
+        message += f"💡 _தொடர்ந்து முதலீடு செய்யுங்கள்!_"
+
+        green_api.sending.sendMessage(chatId=chat_id, message=message)
+    except Exception as e: print(f"WA Error: {e}")
+
+# --- 5. விசுவல்ஸ் மற்றும் ரிப்போர்ட் ---
 def create_visuals(df, prefix):
     plt.figure(figsize=(6, 4))
     plt.pie(df['Qty'] * df['Live'], labels=df['Ticker'], autopct='%1.1f%%', colors=sns.color_palette('pastel'))
-    plt.title('Portfolio Distribution')
+    plt.title(f'Portfolio - {prefix}')
     plt.savefig(f'{prefix}_pie_chart.png')
     plt.close()
 
-    plt.figure(figsize=(6, 4))
-    sns.barplot(x='Ticker', y='PL', data=df, hue='Ticker', palette='RdYlGn', legend=False)
-    plt.axhline(0, color='black', linewidth=0.8)
-    plt.title('Profit & Loss (Rs.)')
-    plt.savefig(f'{prefix}_bar_chart.png')
-    plt.close()
-
-class PortfolioPDF(FPDF):
-    def header(self):
-        self.set_font('helvetica', 'B', 16)
-        self.cell(0, 10, 'Advanced Portfolio Report', align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        self.ln(5)
-
 def create_pdf_report(df, prefix, name):
     pdf_file = f"{prefix}_report.pdf"
-    pdf = PortfolioPDF()
+    pdf = FPDF()
     pdf.add_page()
-    pdf.set_font('helvetica', 'B', 12)
-    pdf.cell(0, 10, f"Report for: {name}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    
+    pdf.set_font('helvetica', 'B', 14)
+    pdf.cell(0, 10, f"Portfolio Report: {name}", align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(5)
     pdf.set_font('helvetica', 'B', 10)
-    cols = ['Date', 'Ticker', 'Qty', 'Avg', 'Live', 'P&L', 'P&L%']
-    pdf.set_fill_color(52, 152, 219)
-    pdf.set_text_color(255)
-    for col in cols:
-        pdf.cell(27, 10, col, border=1, align='C', fill=True)
+    for col in ['Ticker', 'Qty', 'Avg', 'Live', 'P&L']: pdf.cell(38, 10, col, border=1, align='C')
     pdf.ln()
-
     pdf.set_font('helvetica', '', 9)
-    for _, row in df.iterrows():
-        color = (0, 128, 0) if row['PL'] >= 0 else (255, 0, 0)
-        pdf.set_text_color(*color)
-        pdf.cell(27, 10, str(row['Date']), border=1, align='C')
-        pdf.cell(27, 10, str(row['Ticker']), border=1, align='C')
-        pdf.cell(27, 10, str(row['Qty']), border=1, align='C')
-        pdf.cell(27, 10, str(row['Avg']), border=1, align='C')
-        pdf.cell(27, 10, str(row['Live']), border=1, align='C')
-        pdf.cell(27, 10, str(row['PL']), border=1, align='C')
-        pdf.cell(27, 10, str(row['PL_Percent']), border=1, align='C')
+    for _, r in df.iterrows():
+        pdf.cell(38, 10, str(r['Ticker']), border=1)
+        pdf.cell(38, 10, str(r['Qty']), border=1)
+        pdf.cell(38, 10, str(r['Avg']), border=1)
+        pdf.cell(38, 10, str(r['Live']), border=1)
+        pdf.cell(38, 10, str(r['PL']), border=1)
         pdf.ln()
-
-    pdf.ln(10)
-    pdf.set_text_color(0)
-    pdf.image(f'{prefix}_pie_chart.png', x=10, y=pdf.get_y(), w=90)
-    if os.path.exists(f'{prefix}_bar_chart.png'):
-        pdf.image(f'{prefix}_bar_chart.png', x=105, y=pdf.get_y(), w=90)
-    
+    pdf.image(f'{prefix}_pie_chart.png', x=55, y=pdf.get_y()+10, w=100)
     pdf.output(pdf_file)
     return pdf_file
 
 def send_email(receiver, pdf_path, name):
     msg = MIMEMultipart()
-    msg['From'], msg['To'], msg['Subject'] = SENDER_EMAIL, receiver, f"Visual Stock Report - {name}"
-    msg.attach(MIMEText(f"Hello {name}, your visual portfolio report is attached.", 'plain'))
+    msg['From'], msg['To'], msg['Subject'] = SENDER_EMAIL, receiver, f"Stock Report - {name}"
+    msg.attach(MIMEText(f"Hi {name}, find attached your visual report.", 'plain'))
     with open(pdf_path, "rb") as f:
         part = MIMEBase('application', 'octet-stream')
         part.set_payload(f.read()); encoders.encode_base64(part)
@@ -162,55 +142,60 @@ def send_email(receiver, pdf_path, name):
     with smtplib.SMTP('smtp.gmail.com', 587) as server:
         server.starttls(); server.login(SENDER_EMAIL, SENDER_PASSWORD); server.send_message(msg)
 
-def send_whatsapp_green(wa_phone, name, df, total_pl):
-    if not ID_INSTANCE or not API_TOKEN: return
-    try:
-        green_api = API.GreenApi(ID_INSTANCE, API_TOKEN)
-        chat_id = f"{wa_phone}@c.us"
-        
-        # வாட்ஸ்அப் செய்திக்கான விரிவான தகவல்கள்
-        emoji_total = "📈" if total_pl >= 0 else "📉"
-        message = f"🔔 *Live Update*\nவணக்கம் {name} {emoji_total}\n\n*பங்கு விவரங்கள்:*\n"
-        
-        for _, row in df.iterrows():
-            ticker = row['Ticker']
-            qty = row['Qty']
-            pl = row['PL']
-            icon = "✅" if pl >= 0 else "❌"
-            message += f"• {ticker} ({qty} Qty): {icon} ரூ. {pl:.2f}\n"
-        
-        status = "மொத்த இலாபம்" if total_pl >= 0 else "மொத்த நஷ்டம்"
-        message += f"\n💰 *{status}: ரூ. {total_pl:.2f}*"
-        
-        green_api.sending.sendMessage(chatId=chat_id, message=message)
-        print(f"WhatsApp sent to {name}")
-    except Exception as e:
-        print(f"WA Error: {e}")
-
+# --- 6. முதன்மைச் செயல்பாடு ---
 if __name__ == "__main__":
+    h_msg = check_holiday_from_csv()
+    if h_msg:
+        api = API.GreenApi(ID_INSTANCE, API_TOKEN)
+        recipients = [
+            {"name": "Selvakumar", "phone": MY_PHONE},
+            {"name": "Annalakshmi", "phone": WIFE_PHONE}
+        ]
+        
+        for person in recipients:
+            chat_id = f"{person['phone']}@c.us"
+            # உங்கள் பெயரையும் சேர்த்து இன்னும் கொஞ்சம் தனிப்பயனாக்கலாம் (Optional)
+            personalized_msg = f"வணக்கம் {person['name']}!\n{h_msg}"
+            api.sending.sendMessage(chatId=chat_id, message=personalized_msg)
+            print(f"✅ Holiday greeting sent to {person['name']}")
+        exit()
+        
     init_db()
-    ist_now = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=5, minutes=30)
-    current_hour = ist_now.hour
-    current_minute = ist_now.minute
+    ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
     
-    print(f"Current Market Time (IST): {ist_now.strftime('%I:%M %p')}")
+    # CSV கோப்பை வாசித்தல்
+    p_df_all = pd.read_csv('portfolio.csv')
+    
+    holders = [
+        {"name": "Selvakumar", "phone": MY_PHONE, "prefix": "Sfin", "email": "cselvakumar735@gmail.com"},
+        {"name": "Annalakshmi", "phone": WIFE_PHONE, "prefix": "Afin", "email": "selvakumarannalakshmi22@gmail.com"}
+    ]
 
-    for person in PROFILES:
-        print(f"Processing {person['name']}...")
-        df = get_portfolio_data(person['portfolio'])
-        if not df.empty:
-            total_pl = df['PL'].sum()
-            save_to_db(df, person['name'])
-            send_whatsapp_green(person['wa_phone'], person['name'], df, total_pl)
+    for p in holders:
+        u_data = p_df_all[p_df_all['Holder'] == p['name']]
+        if u_data.empty: continue
+        
+        results = []
+        for _, row in u_data.iterrows():
+            ticker = row['Ticker']
+            stock = yf.Ticker(ticker)
+            ltp = round(stock.history(period='1d')['Close'].iloc[-1], 2)
+            pl = round((ltp - row['Avg_Price']) * row['Qty'], 2)
+            tax = estimate_tax(row['Buy_Date'], pl)
+            
+            results.append({
+                'Date': ist.strftime("%Y-%m-%d %H:%M"), 'Ticker': ticker, 'Qty': row['Qty'],
+                'Avg': row['Avg_Price'], 'Live': ltp, 'PL': pl, 'Tax_Estimate': tax
+            })
+        
+        df_res = pd.DataFrame(results)
+        save_to_db(df_res, p['name'])
+        send_whatsapp_green(p['phone'], p['name'], df_res, df_res['PL'].sum())
 
-            is_morning_mail = (current_hour == 9 and 40 <= current_minute <= 59)
-            is_evening_mail = (current_hour == 15 and 0 <= current_minute <= 15)
-
-            if is_morning_mail or is_evening_mail:
-                create_visuals(df, person['prefix'])
-                report_path = create_pdf_report(df, person['prefix'], person['name'])
-                try:
-                    send_email(person['receiver'], report_path, person['name'])
-                    print(f"Email report sent to {person['name']}.")
-                except Exception as e:
-                    print(f"Email failed: {e}")
+        # மின்னஞ்சல் அறிக்கை நேரம்
+        if (ist.hour == 9 and ist.minute >= 40) or (ist.hour == 15 and ist.minute <= 30):
+            create_visuals(df_res, p['prefix'])
+            pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
+            try:
+                send_email(p['email'], pdf_path, p['name'])
+            except: pass
