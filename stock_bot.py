@@ -58,16 +58,33 @@ def estimate_tax(buy_date_str, pl):
 # --- 3. தரவுத்தளம் மற்றும் கோப்புகள் ---
 def init_db():
     conn = sqlite3.connect('portfolio_history.db')
-    conn.execute('''CREATE TABLE IF NOT EXISTS history 
+    cursor = conn.cursor()
+    
+    # டேபிள் உருவாக்கும்போது Tax_Est சேர்க்கப்பட்டுள்ளது
+    cursor.execute('''CREATE TABLE IF NOT EXISTS history 
         (Date TEXT, name TEXT, Ticker TEXT, Qty REAL, Live REAL, PL REAL, Tax_Est TEXT)''')
+    
+    # ஏற்கனவே உள்ள டேபிளில் Tax_Est இல்லை என்றால் அதைச் சேர்க்கும் பகுதி
+    try:
+        cursor.execute("ALTER TABLE history ADD COLUMN Tax_Est TEXT DEFAULT '0.0'")
+    except sqlite3.OperationalError:
+        # காலம் ஏற்கனவே இருந்தால் இந்த Error வரும், அதை நாம் கண்டு கொள்ளத் தேவையில்லை
+        pass
+        
+    conn.commit()
     conn.close()
 
 def save_to_db(df, name):
     conn = sqlite3.connect('portfolio_history.db')
     df_save = df.copy()
     df_save['name'] = name
+    # உங்கள் DataFrame-ல் 'Tax_Estimate' என இருப்பதை 'Tax_Est' என மாற்றுகிறோம்
     df_save.rename(columns={'Tax_Estimate': 'Tax_Est'}, inplace=True)
-    df_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL', 'Tax_Est']].to_sql('history', conn, if_exists='append', index=False)
+    
+    # சரியான வரிசையில் காலம்களைத் தேர்ந்தெடுத்து சேமித்தல்
+    df_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL', 'Tax_Est']].to_sql(
+        'history', conn, if_exists='append', index=False
+    )
     conn.close()
 
 # --- 4. வாட்ஸ்அப் மெசேஜ் டெக்கரேஷன் ---
@@ -116,7 +133,8 @@ def create_pdf_report(df, prefix, name):
     pdf.cell(0, 10, f"Portfolio Report: {name}", align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(5)
     pdf.set_font('helvetica', 'B', 10)
-    for col in ['Ticker', 'Qty', 'Avg', 'Live', 'P&L']: pdf.cell(38, 10, col, border=1, align='C')
+    for col in ['Ticker', 'Qty', 'Avg', 'Live', 'P&L']: 
+        pdf.cell(38, 10, col, border=1, align='C')
     pdf.ln()
     pdf.set_font('helvetica', '', 9)
     for _, r in df.iterrows():
@@ -126,7 +144,10 @@ def create_pdf_report(df, prefix, name):
         pdf.cell(38, 10, str(r['Live']), border=1)
         pdf.cell(38, 10, str(r['PL']), border=1)
         pdf.ln()
-    pdf.image(f'{prefix}_pie_chart.png', x=55, y=pdf.get_y()+10, w=100)
+    
+    if os.path.exists(f'{prefix}_pie_chart.png'):
+        pdf.image(f'{prefix}_pie_chart.png', x=55, y=pdf.get_y()+10, w=100)
+    
     pdf.output(pdf_file)
     return pdf_file
 
@@ -154,7 +175,6 @@ if __name__ == "__main__":
         
         for person in recipients:
             chat_id = f"{person['phone']}@c.us"
-            # உங்கள் பெயரையும் சேர்த்து இன்னும் கொஞ்சம் தனிப்பயனாக்கலாம் (Optional)
             personalized_msg = f"வணக்கம் {person['name']}!\n{h_msg}"
             api.sending.sendMessage(chatId=chat_id, message=personalized_msg)
             print(f"✅ Holiday greeting sent to {person['name']}")
@@ -164,7 +184,11 @@ if __name__ == "__main__":
     ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
     
     # CSV கோப்பை வாசித்தல்
-    p_df_all = pd.read_csv('portfolio.csv')
+    try:
+        p_df_all = pd.read_csv('portfolio.csv')
+    except Exception as e:
+        print(f"Error: portfolio.csv file not found! {e}")
+        exit()
     
     holders = [
         {"name": "Selvakumar", "phone": MY_PHONE, "prefix": "Sfin", "email": "cselvakumar735@gmail.com"},
@@ -178,24 +202,36 @@ if __name__ == "__main__":
         results = []
         for _, row in u_data.iterrows():
             ticker = row['Ticker']
-            stock = yf.Ticker(ticker)
-            ltp = round(stock.history(period='1d')['Close'].iloc[-1], 2)
-            pl = round((ltp - row['Avg_Price']) * row['Qty'], 2)
-            tax = estimate_tax(row['Buy_Date'], pl)
-            
-            results.append({
-                'Date': ist.strftime("%Y-%m-%d %H:%M"), 'Ticker': ticker, 'Qty': row['Qty'],
-                'Avg': row['Avg_Price'], 'Live': ltp, 'PL': pl, 'Tax_Estimate': tax
-            })
+            try:
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period='1d')
+                if hist.empty: continue
+                ltp = round(hist['Close'].iloc[-1], 2)
+                pl = round((ltp - row['Avg_Price']) * row['Qty'], 2)
+                tax = estimate_tax(row['Buy_Date'], pl)
+                
+                results.append({
+                    'Date': ist.strftime("%Y-%m-%d %H:%M"), 
+                    'Ticker': ticker, 'Qty': row['Qty'],
+                    'Avg': row['Avg_Price'], 'Live': ltp, 'PL': pl, 'Tax_Estimate': tax
+                })
+            except Exception as e:
+                print(f"Error fetching {ticker}: {e}")
+        
+        if not results: continue
         
         df_res = pd.DataFrame(results)
         save_to_db(df_res, p['name'])
         send_whatsapp_green(p['phone'], p['name'], df_res, df_res['PL'].sum())
 
-        # மின்னஞ்சல் அறிக்கை நேரம்
+        # மின்னஞ்சல் அறிக்கை நேரம் (காலை 9:40 அல்லது மாலை 3:30 வரை)
         if (ist.hour == 9 and ist.minute >= 40) or (ist.hour == 15 and ist.minute <= 30):
             create_visuals(df_res, p['prefix'])
             pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
             try:
                 send_email(p['email'], pdf_path, p['name'])
-            except: pass
+                print(f"📧 Report sent to {p['name']}")
+            except Exception as e: 
+                print(f"Email Error: {e}")
+
+    print("🏁 Processing Completed Successfully!")
