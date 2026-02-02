@@ -50,7 +50,12 @@ def create_voice_report(name, total_pl, df, prefix):
     
     # அதிக லாபம் கொடுத்த பங்கைச் சேர்த்தல்
     top_stock = df.loc[df['PL'].idxmax()]
-    script += f"இன்று அதிகபட்சமாக {top_stock['Ticker']} பங்கு லாபத்தில் உள்ளது. "
+    if top_stock['PL'] > 0:
+        script += f"இன்று அதிகபட்சமாக {top_stock['Ticker']} பங்கு {top_stock['PL']:.2f} ரூபாய் லாபத்தில் உள்ளது. "
+    elif top_stock['PL'] < 0:
+        script += f"இன்று உங்களின் எல்லா பங்குகளும் நஷ்டத்தில் உள்ளன. இதில் {top_stock['Ticker']} பங்கு மற்றவற்றை விட குறைவான நஷ்டத்தில் உள்ளது. "
+    else:
+        script += f"இன்று {top_stock['Ticker']} பங்கில் மாற்றமில்லை. "
     sentiment_text = get_market_sentiment_advice()
     if "பயத்தில்" in sentiment_text:
         script += " தற்போது சந்தையில் பலரும் பயத்தில் இருக்கிறார்கள், எனவே இது உங்களுக்கு நல்ல முதலீட்டு வாய்ப்பு. "
