@@ -24,7 +24,7 @@ dependencies = [
     "fpdf2==2.8.5",
     "frozendict==2.4.7",
     "frozenlist==1.8.0",
-    "gtts==2.5.4"
+    "gtts==2.5.4",
     "idna==3.11",
     "kiwisolver==1.4.9",
     "magic-filter==1.0.12",
