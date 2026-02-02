@@ -52,7 +52,7 @@ jobs:
           
           git add -f portfolio_history.db|| echo "No reports"          
           # மாற்றங்கள் இருந்தால் மட்டும் Commit செய்யும், இல்லையென்றால் அடுத்த கட்டத்திற்குச் செல்லும்
-          if [ -n "$(git status --portion)" ]; then
+          if [ -n "$(git status --porcelain)" ]; then
             git commit -m "Auto-update: $(date +'%Y-%m-%d %H:%M')"
             git push origin main
           else
