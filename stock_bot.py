@@ -266,7 +266,7 @@ if __name__ == "__main__":
         send_whatsapp_green(p['phone'], p['name'], df_res, df_res['PL'].sum())
 
         # மின்னஞ்சல் அறிக்கை நேரம் (காலை 9:40 அல்லது மாலை 3:30 வரை)
-        if (9 <= ist.hour <= 10) or (15 <= ist.hour <= 16):
+        if True:#(9 <= ist.hour <= 10) or (15 <= ist.hour <= 16):
             create_visuals(df_res, p['prefix'])
             pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
             try:
