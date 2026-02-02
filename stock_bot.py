@@ -119,35 +119,76 @@ def send_whatsapp_green(wa_phone, name, df, total_pl):
 
 # --- 5. விசுவல்ஸ் மற்றும் ரிப்போர்ட் ---
 def create_visuals(df, prefix):
-    plt.figure(figsize=(6, 4))
-    plt.pie(df['Qty'] * df['Live'], labels=df['Ticker'], autopct='%1.1f%%', colors=sns.color_palette('pastel'))
-    plt.title(f'Portfolio - {prefix}')
-    plt.savefig(f'{prefix}_pie_chart.png')
+    # உருவப்படத்தின் அளவை அதிகரித்தல் (Pie + Bar ஆகிய இரண்டிற்கும்)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    
+    # 1. Pie Chart (Portfolio Distribution)
+    ax1.pie(df['Qty'] * df['Live'], labels=df['Ticker'], autopct='%1.1f%%', colors=sns.color_palette('pastel'))
+    ax1.set_title(f'Portfolio Distribution')
+    
+    # 2. Bar Chart (Profit & Loss)
+    # லாபம் என்றால் பச்சை, நஷ்டம் என்றால் சிவப்பு நிறம்
+    colors = ['#66bb6a' if x >= 0 else '#ef5350' for x in df['PL']]
+    ax2.bar(df['Ticker'], df['PL'], color=colors)
+    ax2.set_title('Profit & Loss (Rs.)')
+    ax2.set_ylabel('Rs')
+    
+    plt.tight_layout()
+    plt.savefig(f'{prefix}_visuals.png') # பெயர் மாற்றம் செய்யப்பட்டுள்ளது
     plt.close()
 
 def create_pdf_report(df, prefix, name):
     pdf_file = f"{prefix}_report.pdf"
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font('helvetica', 'B', 14)
-    pdf.cell(0, 10, f"Portfolio Report: {name}", align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    
+    # தலைப்பு (Advanced Title)
+    pdf.set_font('helvetica', 'B', 16)
+    pdf.cell(0, 10, "Advanced Portfolio Report", align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(0, 10, f"Report for: {name}", align='L', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(5)
-    pdf.set_font('helvetica', 'B', 10)
-    for col in ['Ticker', 'Qty', 'Avg', 'Live', 'P&L']: 
-        pdf.cell(38, 10, col, border=1, align='C')
+    
+    # டேபிள் தலைப்பு (Header with Colors)
+    pdf.set_fill_color(52, 152, 219) # Blue color
+    pdf.set_text_color(255, 255, 255) # White text
+    pdf.set_font('helvetica', 'B', 9)
+    
+    cols = ['Date', 'Ticker', 'Qty', 'Avg', 'Live', 'P&L', 'P&L%']
+    widths = [25, 30, 15, 25, 25, 25, 25] # ஒவ்வொரு காலமிற்கும் அளவு
+    
+    for i in range(len(cols)):
+        pdf.cell(widths[i], 10, cols[i], border=1, align='C', fill=True)
     pdf.ln()
-    pdf.set_font('helvetica', '', 9)
+    
+    # டேட்டா வரிகள்
+    pdf.set_text_color(0, 0, 0) # Black text for rows
+    pdf.set_font('helvetica', '', 8)
+    
     for _, r in df.iterrows():
-        pdf.cell(38, 10, str(r['Ticker']), border=1)
-        pdf.cell(38, 10, str(r['Qty']), border=1)
-        pdf.cell(38, 10, str(r['Avg']), border=1)
-        pdf.cell(38, 10, str(r['Live']), border=1)
-        pdf.cell(38, 10, str(r['PL']), border=1)
+        # P&L% கணக்கீடு
+        pandl_perc = round(((r['Live'] - r['Avg']) / r['Avg']) * 100, 2)
+        
+        # தேதியை மட்டும் எடுத்தல் (நேரம் தவிர்த்து)
+        display_date = r['Date'].split(' ')[0]
+        
+        pdf.cell(widths[0], 10, display_date, border=1, align='C')
+        pdf.cell(widths[1], 10, str(r['Ticker']), border=1, align='C')
+        pdf.cell(widths[2], 10, str(r['Qty']), border=1, align='C')
+        pdf.cell(widths[3], 10, str(r['Avg']), border=1, align='C')
+        pdf.cell(widths[4], 10, str(r['Live']), border=1, align='C')
+        
+        # P&L நிறம் (சிவப்பு/கருப்பு)
+        if r['PL'] < 0: pdf.set_text_color(255, 0, 0)
+        pdf.cell(widths[5], 10, str(r['PL']), border=1, align='C')
+        pdf.cell(widths[6], 10, f"{pandl_perc}%", border=1, align='C')
+        pdf.set_text_color(0, 0, 0) # Reset to black
         pdf.ln()
-    
-    if os.path.exists(f'{prefix}_pie_chart.png'):
-        pdf.image(f'{prefix}_pie_chart.png', x=55, y=pdf.get_y()+10, w=100)
-    
+
+    # வரைபடத்தை சேர்த்தல்
+    if os.path.exists(f'{prefix}_visuals.png'):
+        pdf.image(f'{prefix}_visuals.png', x=10, y=pdf.get_y() + 10, w=190)
+
     pdf.output(pdf_file)
     return pdf_file
 
