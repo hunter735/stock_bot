@@ -79,7 +79,7 @@ def create_voice_report(name, total_pl, df, prefix):
     return audio_file
 
 def get_ai_news_analysis(name, ticker):
-    if not client: return "   ┗ 📰 NEWS: ஆலோசனை தயார் நிலையில் இல்லை."
+    if not client: return "   ┗ 📰 NEWS: ஆலோசனை தயார் நிலையில் இல்லை.\n"
     try:
         stock = yf.Ticker(ticker)
         news = stock.news[:2] # கடைசி 2 முக்கிய செய்திகள்
@@ -385,8 +385,7 @@ def send_whatsapp_green(wa_phone, name, df, total_pl, hedge_msg):
             message += f"━━━━━━━━━━━━━━━━━━\n"
             if r.get('IV_Advice') and r['IV_Advice'].strip():
                 message += r['IV_Advice']
-            message += f"━━━━━━━━━━━━━━━━━━\n"    
-            # Averaging Advice இங்கே வரும்
+            message += f"━━━━━━━━━━━━━━━━━━\n" 
             if r.get('Avg_Advice') and r['Avg_Advice'].strip():
                 message += r['Avg_Advice']
             
