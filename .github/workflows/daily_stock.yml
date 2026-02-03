@@ -5,12 +5,19 @@ permissions:
 
 on:
   schedule:
-    # திங்கள் முதல் வெள்ளி வரை மட்டும் (MON-FRI)
-    # காலை 10:00 AM IST (4:30 AM UTC) மற்றும் மதியம் 3:00 PM IST (9:30 AM UTC)
-    # 9:20, 9:45 (Email), 10:30, ... 15:00 (Email)
-    - cron: '20,45 3 * * 1-5'   # காலை 8:50 (9:20 IST), 9:15 (9:45 IST)
-    - cron: '0,45 4-8 * * 1-5'  # 10:15 முதல் 2:15 வரை
-    - cron: '30 9 * * 1-5'      # 3:00 PM IST (9:30 UTC)
+    # 9:20 AM IST (3:50 UTC) - முதல் அறிக்கை (Email + Voice + WA)
+    - cron: '50 3 * * 1-5'
+    # இடைப்பட்ட நேரங்கள் (WA + Voice மட்டும்)
+    - cron: '30 4 * * 1-5'  # 10:00 AM IST
+    - cron: '10 5 * * 1-5'  # 10:40 AM IST
+    - cron: '50 5 * * 1-5'  # 11:20 AM IST
+    - cron: '30 6 * * 1-5'  # 12:00 PM IST
+    - cron: '10 7 * * 1-5'  # 12:40 PM IST
+    - cron: '50 7 * * 1-5'  # 1:20 PM IST
+    - cron: '30 8 * * 1-5'  # 2:00 PM IST
+    - cron: '10 9 * * 1-5'  # 2:40 PM IST
+    # 3:20 PM IST (9:50 UTC) - கடைசி அறிக்கை (Email + Voice + WA)
+    - cron: '50 9 * * 1-5'
   workflow_dispatch: # கைமுறையாக இயக்க உதவும்
   
 jobs:
