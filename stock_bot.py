@@ -585,7 +585,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Voice Mail Error: {e}")
         current_hour = ist.hour
-        if current_hour == 9 or current_hour == 15:
+        if (9 <= current_hour <= 10) or (15 <= current_hour <= 16):
             try:
                 create_visuals(df_res, p['prefix'])
                 pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
