@@ -6,7 +6,7 @@ permissions:
 on:
   schedule:
     # 9:20 AM IST (3:50 UTC) - முதல் அறிக்கை (Email + Voice + WA)
-    - cron: '50 3 * * 1-5'
+    - cron: '40 3 * * 1-5'
     # இடைப்பட்ட நேரங்கள் (WA + Voice மட்டும்)
     - cron: '30 4 * * 1-5'  # 10:00 AM IST
     - cron: '10 5 * * 1-5'  # 10:40 AM IST
