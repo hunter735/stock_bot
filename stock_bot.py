@@ -150,7 +150,7 @@ def get_intrinsic_value_advice(ticker, current_price):
         book_value = info.get('bookValue') or info.get('priceToBook') # Price to book
         
         if eps and book_value and eps > 0:
-            intrinsic_value = (22.5 * eps * book_value) ** 0.5
+            intrinsic_value = (22.5 * row['eps'] * row['book_value']) ** 0.5
             
             # தள்ளுபடி (Discount) கணக்கீடு
             if current_price < intrinsic_value:
@@ -214,39 +214,45 @@ def get_market_sentiment_advice():
     
 def get_rebalancing_advice(df):
     try:
-        # 1. தற்போதைய மதிப்புகளைக் கணக்கிடுதல்
-        # Ticker பெயரில் 'GOLD' அல்லது 'SETFGOLD' இருந்தால் அதைத் தங்கமாகக் கருதுகிறோம்
-        df['Total_Value'] = df['Qty'] * df['Live']
-        gold_val = df[df['Ticker'].str.contains('GOLD', case=False)]['Total_Value'].sum()
-        stock_val = df[~df['Ticker'].str.contains('GOLD', case=False)]['Total_Value'].sum()
-        total_portfolio = gold_val + stock_val
+        # 1. சொத்துக்களைப் பிரித்தல் (Asset Classification)
+        # Ticker பெயரில் GOLD அல்லது SILV இருந்தால் அவை Commodity
+        commodity_tickers = ['GOLD', 'SILV', 'SETFGOLD', 'TATAGOLD', 'TATSILV']
         
+        df['Total_Value'] = df['Qty'] * df['Live']
+        
+        # Commodity மற்றும் Equity மதிப்புகளைக் கணக்கிடுதல்
+        is_commodity = df['Ticker'].str.contains('|'.join(commodity_tickers), case=False)
+        comm_val = df[is_commodity]['Total_Value'].sum()
+        equity_val = df[~is_commodity]['Total_Value'].sum()
+        
+        total_portfolio = comm_val + equity_val
         if total_portfolio == 0: return ""
 
         # 2. தற்போதைய விழுக்காடு
-        current_gold_pct = (gold_val / total_portfolio) * 100
-        current_stock_pct = (stock_val / total_portfolio) * 100
-        
-        # 3. இலக்கு (Target: Gold 50%, Stocks 50%)
-        target_pct = 50.0
-        threshold = 5.0 # 5% க்கு மேல் மாற்றம் இருந்தால் மட்டும் எச்சரிக்கை
-        
-        advice = "⚖️ *போர்ட்ஃபோலியோ-Rebalancing:*\n"
-        advice += f"   ┣ தங்கம்: {current_gold_pct:.1f}% | பங்குகள்: {current_stock_pct:.1f}%\n"
+        current_comm_pct = (comm_val / total_portfolio) * 100
+        current_equity_pct = (equity_val / total_portfolio) * 100
 
-        if current_stock_pct > (target_pct + threshold):
-            diff_val = total_portfolio * ((current_stock_pct - target_pct) / 100)
-            advice += f"   ┗ ⚠️ *அறிவுரை:* பங்குகள் {current_stock_pct:.1f}% ஆக உயர்ந்துள்ளது. ₹{diff_val:,.0f} மதிப்பிற்கு பங்குகளை விற்று (Profit Booking) தங்கத்தில் முதலீடு செய்யவும்.\n"
-        elif current_gold_pct > (target_pct + threshold):
-            diff_val = total_portfolio * ((current_gold_pct - target_pct) / 100)
-            advice += f"   ┗ ⚠️ *அறிவுரை:* தங்கம் {current_gold_pct:.1f}% ஆக உயர்ந்துள்ளது. ₹{diff_val:,.0f} மதிப்பிற்கு தங்கத்தை விற்று பங்குகளில் முதலீடு செய்யவும்.\n"
+        # 3. இலக்கு (Target: 50% Commodity | 50% Equity)
+        target_pct = 50.0
+        threshold = 5.0 # 5% வித்தியாசம் இருந்தால் மட்டும் எச்சரிக்கை
+
+        advice = "⚖️ *போர்ட்ஃபோலியோ சமநிலை (Rebalancing):*\n"
+        advice += f"   ┣ தங்கம்/வெள்ளி: {current_comm_pct:.1f}%\n"
+        advice += f"   ┣ பங்குகள் (Equity): {current_equity_pct:.1f}%\n"
+
+        # 4. ஆலோசனை வழங்குதல்
+        if current_equity_pct > (target_pct + threshold):
+            diff_val = total_portfolio * ((current_equity_pct - target_pct) / 100)
+            advice += f"   ┗ ⚠️ *அறிவுரை:* பங்குகள் அதிகமாக உள்ளன. ₹{diff_val:,.0f} மதிப்பிற்கு பங்குகளை விற்று தங்கம்/வெள்ளியில் முதலீடு செய்யவும்.\n"
+        elif current_comm_pct > (target_pct + threshold):
+            diff_val = total_portfolio * ((current_comm_pct - target_pct) / 100)
+            advice += f"   ┗ ⚠️ *அறிவுரை:* தங்கம்/வெள்ளி அதிகமாக உள்ளது. ₹{diff_val:,.0f} மதிப்பிற்கு இவற்றை விற்று பங்குகளில் (Equity) முதலீடு செய்யவும்.\n"
         else:
-            advice += "   ┗ ✅ உங்கள் போர்ட்ஃபோலியோ சரியான சமநிலையில் உள்ளது.\n"
-            
+            advice += "   ┗ ✅ உங்கள் சொத்துக்கள் சரியான சமநிலையில் உள்ளன.\n"
+
         return advice
     except Exception as e:
         return f"Rebalancing Error: {e}"
-    
 def get_profit_booking_advice(df):
     try:
         booking_list = []
@@ -271,16 +277,22 @@ def get_profit_booking_advice(df):
     except Exception as e:
         return f"Profit Booking Error: {e}"    
 # --- 2. வரி மதிப்பீடு ---
-def estimate_tax(buy_date_str, pl):
-    if pl <= 0: return "வரி இல்லை"
+def estimate_tax(buy_date_str, total_pl):
+    if total_pl <= 0: return "வரி இல்லை"
     try:
+        # சராசரி அடக்க விலையை அடிப்படையாகக் கொண்ட மொத்த லாபம் (total_pl) இங்கு பயன்படுத்தப்படுகிறது
         buy_date = datetime.strptime(buy_date_str, '%Y-%m-%d')
         days = (datetime.now() - buy_date).days
+        
         if days < 365:
-            return f"STCG(20%): ₹{round(pl * 0.20, 1)}"
+            # 1 வருடத்திற்குள் - STCG 20%
+            tax_amt = total_pl * 0.20
+            return f"STCG(20%): ₹{round(tax_amt, 1)}"
         else:
-            taxable = max(0, pl - 125000)
-            return f"LTCG(12.5%): ₹{round(taxable * 0.125, 1)}"
+            # 1 வருடத்திற்கு மேல் - LTCG 12.5% (₹1.25L விலக்குக்கு பின்)
+            taxable_pl = max(0, total_pl - 125000)
+            tax_amt = taxable_pl * 0.125
+            return f"LTCG(12.5%): ₹{round(tax_amt, 1)}"
     except:
         return "தேதி பிழை"
     
@@ -372,51 +384,51 @@ def send_whatsapp_green(wa_phone, name, df, total_pl, hedge_msg):
 
         for _, r in df.iterrows():
             icon = "🟢" if r['PL'] >= 0 else "🔴"
-            pl_label = "லாபம்" if r['PL'] >= 0 else "நஷ்டம் "
+            pl_label = "லாபம்" if r['PL'] >= 0 else "நஷ்டம்"
             pl_display = f"ரூ. {r['PL']:,.2f}"
-            
-            message += f"{icon} *{r['Ticker']}*\n"
+
+            # --- மேம்படுத்தப்பட்ட பகுதி: Qty மற்றும் Avg Price சேர்த்தல் ---
+            message += f"{icon} *{r['Ticker']}* (Qty: {int(r['Qty'])})\n"
+            message += f"   ┣ Avg Price: *₹{r['Avg']:,.2f}*\n"
+            message += f"   ┣ Live Price: *₹{r['Live']:,.2f}*\n"
             message += f"   ┣ {pl_label}: *{pl_display}*\n"
             message += f"   ┗ வரி: _{r['Tax_Estimate']}_\n"
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            if r.get('RSI_Advice'): 
-                message += r['RSI_Advice']
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            if r.get('AI_News'): message += r['AI_News']
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            if r.get('IV_Advice') and r['IV_Advice'].strip():
-                message += r['IV_Advice']
-            message += f"━━━━━━━━━━━━━━━━━━\n" 
-            if r.get('Avg_Advice') and r['Avg_Advice'].strip():
-                message += r['Avg_Advice']
             
-            message += "\n" # ஒவ்வொரு பங்கிற்கும் இடையில் இடைவெளி
+            # கூடுதல் தகவல்கள் (RSI, News, AI)
+            if r.get('RSI_Advice'): 
+                message += f"   {r['RSI_Advice']}"
+            if r.get('IV_Advice'):
+                message += f"   ┗ {r['IV_Advice']}\n"
+            if r.get('Avg_Advice') and r['Avg_Advice'].strip():
+                message += f"   {r['Avg_Advice']}\n"
+            if r.get('AI_News'): 
+                message += f"   {r['AI_News']}"
+            
+            
+            message += f"━━━━━━━━━━━━━━━━━━\n"
 
-        message += f"━━━━━━━━━━━━━━━━━━\n"
         status_icon = "💰" if total_pl >= 0 else "⚠️"
         message += f"{status_icon} *இன்றைய மொத்த நிலை:* \n"
         message += f"👉 *ரூ. {total_pl:,.2f}* {emoji_main}\n"
         message += f"━━━━━━━━━━━━━━━━━━\n"
-        message += f"🧠 *Emotional Intelligence(மக்கள்_மனநிலை):* \n{sentiment_msg}\n"
+        message += f"🧠 *Emotional Intelligence:* \n{sentiment_msg}\n"
         message += f"━━━━━━━━━━━━━━━━━━\n"
-        message += f"🤖 *ஆலோசனை:* \n_{ai_advice}_\n"
+        message += f"🤖 *AI ஆலோசனை:* \n_{ai_advice}_\n"
         message += f"━━━━━━━━━━━━━━━━━━\n"
-        message += f"🎯 *லாபத்தை எடுக்கும் நேரம் (Profit Booking):*\n{profit_msg}"
-        message += f"━━━━━━━━━━━━━━━━━━\n"
+        message += f"🎯 *லாப வாய்ப்புகள்:* \n{profit_msg}"
+        
         if market_status:
-            message += market_status + "\n"
-            message += f"━━━━━━━━━━━━━━━━━━\n"
+            message += f"━━━━━━━━━━━━━━━━━━\n{market_status}\n"
         if rebalance_msg:
-            message += rebalance_msg + "\n"
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-        if "Profit Booking" in r['Profit_Advice'] or "Stop Loss" in r['Profit_Advice']:
-            message += r['Profit_Advice']
-            message += f"━━━━━━━━━━━━━━━━━━\n"
-            message += f"{hedge_msg}\n" # ஹெட்ஜிங் மெசேஜ் இங்கே வரும்
-            message += f"━━━━━━━━━━━━━━━━━━\n"  
+            message += f"━━━━━━━━━━━━━━━━━━\n{rebalance_msg}\n"
+        if hedge_msg:
+            message += f"━━━━━━━━━━━━━━━━━━\n{hedge_msg}\n"
+            
+        message += f"━━━━━━━━━━━━━━━━━━\n"
         message += f"💡 _தொடர்ந்து முதலீடு செய்யுங்கள்!_"
 
         green_api.sending.sendMessage(chatId=chat_id, message=message)
+        print(f"✅ வாட்ஸ்அப் அறிக்கை {name}-க்கு அனுப்பப்பட்டது.")
     except Exception as e: 
         print(f"WA Error: {e}")
 def create_visuals(df, prefix):
@@ -500,27 +512,24 @@ def send_email(receiver, pdf_path, name):
 
 # --- 6. முதன்மைச் செயல்பாடு ---
 if __name__ == "__main__":
+    init_db()
+    ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+    
+    # 1. Holiday Check
     h_msg = check_holiday_from_csv()
     if h_msg:
         api = API.GreenApi(ID_INSTANCE, API_TOKEN)
-        recipients = [
-            {"name": "Selvakumar", "phone": MY_PHONE},
-            {"name": "Annalakshmi", "phone": WIFE_PHONE}
-        ]
-        
+        recipients = [{"name": "Selvakumar", "phone": MY_PHONE}, {"name": "Annalakshmi", "phone": WIFE_PHONE}]
         for person in recipients:
-            chat_id = f"{person['phone']}@c.us"
-            personalized_msg = f"வணக்கம் {person['name']}!\n{h_msg}"
-            api.sending.sendMessage(chatId=chat_id, message=personalized_msg)
-            print(f"✅ Holiday greeting sent to {person['name']}")
+            api.sending.sendMessage(chatId=f"{person['phone']}@c.us", message=f"வணக்கம் {person['name']}!\n{h_msg}")
+        print("✅ Holiday notification sent.")
         exit()
-        
-    init_db()
-    ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+
+    # 2. Portfolio Loading
     try:
         p_df_all = pd.read_csv('portfolio.csv')
     except Exception as e:
-        print(f"Error: portfolio.csv file not found! {e}")
+        print(f"Error: portfolio.csv not found! {e}")
         exit()
     
     holders = [
@@ -528,69 +537,89 @@ if __name__ == "__main__":
         {"name": "Annalakshmi", "phone": WIFE_PHONE, "prefix": "Afin", "email": "selvakumarannalakshmi22@gmail.com"}
     ]
 
+    # 3. Batch Download - அனைத்து விலைகளையும் ஒரே நேரத்தில் எடுத்தல் (Optimization)
+    all_tickers = p_df_all['Ticker'].unique().tolist()
+    # 'yfinance' மூலம் ஒரே அழைப்பில் அனைத்து டேட்டாவையும் பெறுதல்
+    market_data = yf.download(all_tickers, period='1d')['Close'].iloc[-1].to_dict()
+
     for p in holders:
-        u_data = p_df_all[p_df_all['Holder'] == p['name']]
+        # .copy() பயன்படுத்துவது பாதுகாப்பானது
+        u_data = p_df_all[p_df_all['Holder'] == p['name']].copy()
         if u_data.empty: continue
-        
+
+        # Weighted Average லாஜிக்
+        u_data['Total_Cost'] = u_data['Qty'] * u_data['Avg_Price']
+        u_data_grouped = u_data.groupby('Ticker').agg({
+            'Qty': 'sum',
+            'Total_Cost': 'sum',
+            'Buy_Date': 'min' 
+        }).reset_index()
+        u_data_grouped['Avg_Price'] = u_data_grouped['Total_Cost'] / u_data_grouped['Qty']
+
         results = []
-        for _, row in u_data.iterrows():
+        for _, row in u_data_grouped.iterrows():
             ticker = row['Ticker']
             try:
-                stock = yf.Ticker(ticker)
-                hist = stock.history(period='1d')
-                if hist.empty: continue
-                ltp = round(hist['Close'].iloc[-1], 2)
+                # Batch டவுன்லோட் செய்த டேட்டாவில் இருந்து விலையை எடுத்தல்
+                ltp = round(market_data.get(ticker, 0), 2)
+                if ltp == 0: continue # டேட்டா கிடைக்கவில்லை என்றால் தவிர்க்கவும்
+                
                 pl = round((ltp - row['Avg_Price']) * row['Qty'], 2)
                 tax = estimate_tax(row['Buy_Date'], pl)
+                
+                # ஆலோசனைகள் (இவை உங்கள் பழைய Functions-ஐப் பயன்படுத்தும்)
                 avg_adv = get_averaging_advice(row['Qty'], row['Avg_Price'], ltp)
                 iv_adv = get_intrinsic_value_advice(ticker, ltp)
                 rsi_adv = get_rsi_advice(ticker)
                 ai_news = get_ai_news_analysis(p['name'], ticker)
 
-                # இந்த ஒரு பங்கின் டேட்டாவை மட்டும் ஒரு தற்காலிக DataFrame ஆக மாற்றி அனுப்ப வேண்டும்
                 single_stock_df = pd.DataFrame([{
                     'Ticker': ticker, 'Qty': row['Qty'], 'Avg': row['Avg_Price'], 'PL': pl
                 }])
                 profit_adv = get_profit_booking_advice(single_stock_df)
-                
+
                 results.append({
                     'Date': ist.strftime("%Y-%m-%d %H:%M"), 
                     'Ticker': ticker, 'Qty': row['Qty'],
-                    'Avg': row['Avg_Price'], 'Live': ltp, 'PL': pl, 'Tax_Estimate': tax,'Avg_Advice': avg_adv, 'IV_Advice': iv_adv,'Profit_Advice': profit_adv, 'RSI_Advice': rsi_adv, 'AI_News': ai_news
+                    'Avg': row['Avg_Price'], 'Live': ltp, 'PL': pl, 
+                    'Tax_Estimate': tax, 'Avg_Advice': avg_adv, 
+                    'IV_Advice': iv_adv, 'Profit_Advice': profit_adv, 
+                    'RSI_Advice': rsi_adv, 'AI_News': ai_news
                 })
             except Exception as e:
-                print(f"Error fetching {ticker}: {e}")
-        
+                print(f"Error processing {ticker}: {e}")
+
         if not results: continue
         
         df_res = pd.DataFrame(results)
+        total_pl = df_res['PL'].sum()
         total_val = (df_res['Live'] * df_res['Qty']).sum()
         hedge_msg = get_hedging_advice(total_val)
-        total_pl = df_res['PL'].sum()
+
+        # சேமிப்பு மற்றும் அறிக்கைகள்
         save_to_db(df_res, p['name'])
-        send_whatsapp_green(p['phone'], p['name'], df_res, df_res['PL'].sum(), hedge_msg)
+        send_whatsapp_green(p['phone'], p['name'], df_res, total_pl, hedge_msg)
+
+        # 4. Voice Report - Green API ஆப்ஜெக்ட் ஒருமுறை மட்டும்
         try:
             audio_path = create_voice_report(p['name'], total_pl, df_res, p['prefix'])
-            
-            # Green API மூலம் ஆடியோவை அனுப்புதல்
-            green_api = API.GreenApi(ID_INSTANCE, API_TOKEN) # green_api ஆப்ஜெக்ட் இங்கே இருப்பதை உறுதி செய்யவும்
-            
+            green_api = API.GreenApi(ID_INSTANCE, API_TOKEN)
             green_api.sending.sendFileByUpload(
                 chatId=f"{p['phone']}@c.us", 
                 path=audio_path, 
                 fileName=f"{p['name']}_Market_Report.mp3",
                 caption="🎤 இன்றைய குரல் அறிக்கை!"
             )
-            print(f"🎙️ Voice report sent to {p['name']}")
         except Exception as e:
             print(f"Voice Mail Error: {e}")
-        current_hour = ist.hour
-        if (9 <= current_hour <= 10) or (15 <= current_hour <= 16):
+
+        # 5. Visual Reports (காலை 9-10 மற்றும் மாலை 3-4 நேரங்களில் மட்டும்)
+        if (9 <= ist.hour <= 10) or (15 <= ist.hour <= 16):
             try:
                 create_visuals(df_res, p['prefix'])
                 pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
                 send_email(p['email'], pdf_path, p['name'])
-                print(f"📧 Email report sent to {p['name']}")
             except Exception as e: 
-                print(f"Email Error: {e}")
+                print(f"PDF/Email Error: {e}")
+
 print("🏁 Processing Completed Successfully!")
