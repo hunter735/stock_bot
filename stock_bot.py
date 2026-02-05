@@ -333,23 +333,58 @@ def get_hedging_advice(total_portfolio_value):
         return f"Hedging Error: {e}"
 # --- 3. தரவுத்தளம் மற்றும் கோப்புகள் ---
 def init_db():
-    conn = sqlite3.connect('portfolio_history.db')
-    cursor = conn.cursor()
-    
-    # டேபிள் உருவாக்கும்போது Tax_Est சேர்க்கப்பட்டுள்ளது
-    cursor.execute('''CREATE TABLE IF NOT EXISTS history 
-        (Date TEXT, name TEXT, Ticker TEXT, Qty REAL, Live REAL, PL REAL, Tax_Est TEXT)''')
-    
-    # ஏற்கனவே உள்ள டேபிளில் Tax_Est இல்லை என்றால் அதைச் சேர்க்கும் பகுதி
     try:
-        cursor.execute("ALTER TABLE history ADD COLUMN Tax_Est TEXT DEFAULT '0.0'")
-    except sqlite3.OperationalError:
-        # காலம் ஏற்கனவே இருந்தால் இந்த Error வரும், அதை நாம் கண்டு கொள்ளத் தேவையில்லை
-        pass
-        
-    conn.commit()
-    conn.close()
+        conn = sqlite3.connect('portfolio_history.db')
+        cursor = conn.cursor()
+        # PRIMARY KEY சேர்ப்பது மிக முக்கியம். இதுதான் Duplicate-ஐத் தடுக்கும்.
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS history (
+                Date TEXT,
+                Holder TEXT,
+                Ticker TEXT,
+                Qty REAL,
+                Avg_Price REAL,
+                Live_Price REAL,
+                PL REAL,
+                Tax_Est TEXT,
+                PRIMARY KEY (Date, Holder, Ticker)
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"❌ Init DB Error: {e}")
 
+def save_to_db(df, holder_name):
+    try:
+        conn = sqlite3.connect('portfolio_history.db')
+        cursor = conn.cursor()
+        
+        # தற்போதைய தேதியை மட்டும் எடுத்தல் (நேரம் தேவையில்லை)
+        current_date = datetime.now().strftime('%Y-%m-%d')
+
+        for _, row in df.iterrows():
+            # INSERT OR REPLACE: ஏற்கனவே (தேதி, பெயர், டிக்கர்) இருந்தால் விலையை மட்டும் மாற்றும்
+            cursor.execute('''
+                INSERT OR REPLACE INTO history 
+                (Date, Holder, Ticker, Qty, Avg_Price, Live_Price, PL, Tax_Est)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                current_date, 
+                holder_name, 
+                row['Ticker'], 
+                row['Qty'], 
+                row['Avg'], 
+                row['Live'], 
+                row['PL'],
+                row.get('Tax_Estimate', '0.0') # Tax விவரத்தையும் சேர்த்துள்ளோம்
+            ))
+        
+        conn.commit()
+        conn.close()
+        print(f"✅ {holder_name}-ன் தரவுகள் (EOD Logic) டேட்டாபேஸில் புதுப்பிக்கப்பட்டன.")
+    except Exception as e:
+        print(f"❌ Database Save Error: {e}")
 def save_to_db(df, name):
     conn = sqlite3.connect('portfolio_history.db')
     df_save = df.copy()
