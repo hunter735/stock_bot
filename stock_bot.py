@@ -334,9 +334,9 @@ def get_hedging_advice(total_portfolio_value):
 # --- 3. தரவுத்தளம் மற்றும் கோப்புகள் ---
 def init_db():
     try:
-        conn = sqlite3.connect('portfolio_history.db')
+        conn = sqlite3.connect('portfolio_history.db', timeout=30)
         cursor = conn.cursor()
-        # PRIMARY KEY சேர்ப்பது மிக முக்கியம். இதுதான் Duplicate-ஐத் தடுக்கும்.
+        # PRIMARY KEY: ஒரே தேதியில், ஒரு நபருக்கு, ஒரு டிக்கர் ஒரு முறை மட்டுமே பதிவாகும்
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS history (
                 Date TEXT,
@@ -354,17 +354,16 @@ def init_db():
         conn.close()
     except Exception as e:
         print(f"❌ Init DB Error: {e}")
-
 def save_to_db(df, holder_name):
     try:
         conn = sqlite3.connect('portfolio_history.db')
         cursor = conn.cursor()
         
-        # தற்போதைய தேதியை மட்டும் எடுத்தல் (நேரம் தேவையில்லை)
+        # நேரமில்லாத தேதியை மட்டும் எடுக்க (YYYY-MM-DD)
         current_date = datetime.now().strftime('%Y-%m-%d')
 
         for _, row in df.iterrows():
-            # INSERT OR REPLACE: ஏற்கனவே (தேதி, பெயர், டிக்கர்) இருந்தால் விலையை மட்டும் மாற்றும்
+            # INSERT OR REPLACE: டூப்ளிகேட் एंट्री வந்தால் பழையதை அழித்துவிட்டு புதியதைச் சேர்க்கும்
             cursor.execute('''
                 INSERT OR REPLACE INTO history 
                 (Date, Holder, Ticker, Qty, Avg_Price, Live_Price, PL, Tax_Est)
@@ -377,27 +376,14 @@ def save_to_db(df, holder_name):
                 row['Avg'], 
                 row['Live'], 
                 row['PL'],
-                row.get('Tax_Estimate', '0.0') # Tax விவரத்தையும் சேர்த்துள்ளோம்
+                str(row.get('Tax_Estimate', '0.0')) 
             ))
         
         conn.commit()
         conn.close()
-        print(f"✅ {holder_name}-ன் தரவுகள் (EOD Logic) டேட்டாபேஸில் புதுப்பிக்கப்பட்டன.")
+        print(f"✅ {holder_name}-ன் தரவுகள் டேட்டாபேஸில் புதுப்பிக்கப்பட்டன.")
     except Exception as e:
         print(f"❌ Database Save Error: {e}")
-def save_to_db(df, name):
-    conn = sqlite3.connect('portfolio_history.db')
-    df_save = df.copy()
-    df_save['name'] = name
-    # உங்கள் DataFrame-ல் 'Tax_Estimate' என இருப்பதை 'Tax_Est' என மாற்றுகிறோம்
-    df_save.rename(columns={'Tax_Estimate': 'Tax_Est'}, inplace=True)
-    
-    # சரியான வரிசையில் காலம்களைத் தேர்ந்தெடுத்து சேமித்தல்
-    df_save[['Date', 'name', 'Ticker', 'Qty', 'Live', 'PL', 'Tax_Est']].to_sql(
-        'history', conn, if_exists='append', index=False
-    )
-    conn.close()
-
 # --- 4. வாட்ஸ்அப் மெசேஜ் டெக்கரேஷன் ---
 def send_whatsapp_green(wa_phone, name, df, total_pl, hedge_msg):
     try:
