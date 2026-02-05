@@ -654,6 +654,7 @@ if __name__ == "__main__":
                 create_visuals(df_res, p['prefix'])
                 pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
                 send_email(p['email'], pdf_path, p['name'])
+                print(f"✅ PDF Report emailed to {p['name']}.")
             except Exception as e: 
                 print(f"PDF/Email Error: {e}")
 
