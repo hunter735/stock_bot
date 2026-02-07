@@ -648,7 +648,7 @@ if __name__ == "__main__":
             print(f"Voice Mail Error: {e}")
 
         # 5. Visual Reports (காலை 9-10 மற்றும் மாலை 3-4 நேரங்களில் மட்டும்)
-        if True:#(9 <= ist.hour <= 10) or (15 <= ist.hour <= 16):
+        if (9 <= ist.hour <= 10) or (15 <= ist.hour <= 16):
             try:
                 create_visuals(df_res, p['prefix'])
                 pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
