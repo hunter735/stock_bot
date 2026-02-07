@@ -481,10 +481,11 @@ def create_pdf_report(df, prefix, name):
     pdf_file = f"{prefix}_report.pdf"
     pdf = PortfolioPDF()
     pdf.add_page()
+    ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
     pdf.set_font('helvetica', 'B', 12)
     pdf.cell(0, 10, f"Report for: {name}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_font('helvetica', '', 10)
-    pdf.cell(0, 10, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 10, f"Date: {ist.strftime('%Y-%m-%d %I:%M %p')}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(5)
     pdf.set_font('helvetica', 'B', 9)
     pdf.set_fill_color(52, 152, 219) # Blue
@@ -557,8 +558,6 @@ if __name__ == "__main__":
         {"name": "Annalakshmi", "phone": WIFE_PHONE, "prefix": "Afin", "email": "selvakumarannalakshmi22@gmail.com"}
     ]
 
-    # 3. Batch Download - அனைத்து விலைகளையும் ஒரே நேரத்தில் எடுத்தல் (Optimization)
-        # 3. Batch Download - Stocks & Mutual Funds
     all_tickers = p_df_all['Ticker'].unique().tolist()
     market_data = {}
 
@@ -570,13 +569,10 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error fetching data for {ticker}: {e}")
             market_data[ticker] = 0 
-            
+
     for p in holders:
-        # .copy() பயன்படுத்துவது பாதுகாப்பானது
         u_data = p_df_all[p_df_all['Holder'] == p['name']].copy()
         if u_data.empty: continue
-
-        # Weighted Average லாஜிக்
         u_data['Total_Cost'] = u_data['Qty'] * u_data['Avg_Price']
         u_data_grouped = u_data.groupby('Ticker').agg({
             'Qty': 'sum',
@@ -589,14 +585,23 @@ if __name__ == "__main__":
         for _, row in u_data_grouped.iterrows():
             ticker = row['Ticker']
             try:
-                # Batch டவுன்லோட் செய்த டேட்டாவில் இருந்து விலையை எடுத்தல்
+                if ticker == "0P0001217S.BO" or ticker == "M_MIDCAP" or ticker == "0P00012ALS.BO":
+                    display_name = "Motilal Midcap SIP"
+                else:
+                    display_name = str(ticker)
+                qty = row['Qty']
+                avg_price = row['Avg_Price']
                 ltp = round(market_data.get(ticker, 0), 2)
-                if ltp == 0: continue # டேட்டா கிடைக்கவில்லை என்றால் தவிர்க்கவும்
-                
+                if ltp == 0:
+                    stock = yf.Ticker(ticker)
+                    hist = stock.history(period="1d")
+                    if not hist.empty:
+                        ltp = round(hist['Close'].iloc[-1], 2)
+                    else:
+                        print(f"⚠️ {ticker} க்கான விலை கிடைக்கவில்லை!")
+                        continue 
                 pl = round((ltp - row['Avg_Price']) * row['Qty'], 2)
                 tax = estimate_tax(row['Buy_Date'], pl)
-                
-                # ஆலோசனைகள் (இவை உங்கள் பழைய Functions-ஐப் பயன்படுத்தும்)
                 avg_adv = get_averaging_advice(row['Qty'], row['Avg_Price'], ltp)
                 iv_adv = get_intrinsic_value_advice(ticker, ltp)
                 rsi_adv = get_rsi_advice(ticker)
@@ -609,7 +614,7 @@ if __name__ == "__main__":
 
                 results.append({
                     'Date': ist.strftime("%Y-%m-%d %H:%M"), 
-                    'Ticker': ticker, 'Qty': row['Qty'],
+                    'Ticker': display_name, 'Qty': row['Qty'],
                     'Avg': row['Avg_Price'], 'Live': ltp, 'PL': pl, 
                     'Tax_Estimate': tax, 'Avg_Advice': avg_adv, 
                     'IV_Advice': iv_adv, 'Profit_Advice': profit_adv, 
@@ -643,7 +648,7 @@ if __name__ == "__main__":
             print(f"Voice Mail Error: {e}")
 
         # 5. Visual Reports (காலை 9-10 மற்றும் மாலை 3-4 நேரங்களில் மட்டும்)
-        if (9 <= ist.hour <= 10) or (15 <= ist.hour <= 16):
+        if True:#(9 <= ist.hour <= 10) or (15 <= ist.hour <= 16):
             try:
                 create_visuals(df_res, p['prefix'])
                 pdf_path = create_pdf_report(df_res, p['prefix'], p['name'])
