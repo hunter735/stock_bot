@@ -334,7 +334,7 @@ def get_hedging_advice(total_portfolio_value):
 def get_mf_nav(scheme_code):
     try:
         url = f"https://api.mfapi.in/mf/{scheme_code}"
-        response = requests.get(url, timeout=10).json()
+        response = requests.get(url, timeout=30).json()
         if response and 'data' in response and len(response['data']) > 0:
             latest_nav = response['data'][0]['nav']
             return float(latest_nav)
