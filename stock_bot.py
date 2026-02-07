@@ -331,17 +331,6 @@ def get_hedging_advice(total_portfolio_value):
         return "✅ சந்தை சீராக உள்ளது. ஹெட்ஜிங் தேவையில்லை."
     except Exception as e:
         return f"Hedging Error: {e}"
-def get_mf_nav(scheme_code):
-    try:
-        url = f"https://api.mfapi.in/mf/{scheme_code}"
-        response = requests.get(url, timeout=30).json()
-        if response and 'data' in response and len(response['data']) > 0:
-            latest_nav = response['data'][0]['nav']
-            return float(latest_nav)
-    except Exception as e:
-        print(f"❌ MF API Error ({scheme_code}): {e}")
-    return 0
-# --- 3. தரவுத்தளம் மற்றும் கோப்புகள் ---
 def init_db():
     try:
         conn = sqlite3.connect('portfolio_history.db', timeout=30)
@@ -574,30 +563,14 @@ if __name__ == "__main__":
     market_data = {}
 
     print("⏳ தரவுகளைச் சேகரிக்கிறது (Stocks & Mutual Funds)...")
-    
-    # Stocks-காக மட்டும் yfinance-ஐப் பயன்படுத்த தனிப் பட்டியல்
-    stock_tickers = [t for t in all_tickers if not str(t).isdigit()]
-    
-    # ஒரே முறையில் அனைத்து Stock விலைகளையும் எடுத்தல்
-    if stock_tickers:
-        try:
-            temp_data = yf.download(stock_tickers, period='1d', progress=False)['Close'].iloc[-1]
-            if len(stock_tickers) == 1:
-                market_data[stock_tickers[0]] = round(float(temp_data), 2)
-            else:
-                for t in stock_tickers:
-                    market_data[t] = round(float(temp_data[t]), 2)
-        except:
-            print("⚠️ Stocks தரவிறக்கத்தில் சிறு பிழை!")
-
-    # மியூச்சுவல் ஃபண்டுகளை ஒவ்வொன்றாக எடுத்தல்
     for ticker in all_tickers:
-        if str(ticker).isdigit():
-            nav = get_mf_nav(ticker)
-            market_data[ticker] = nav
-            # படத்தில் உள்ள 108.05 போன்ற NAV கிடைப்பதை உறுதி செய்ய
-            if nav > 0:
-                print(f"✅ MF {ticker} NAV: {nav}")
+        try:
+            stock = yf.Ticker(ticker)
+            market_data[ticker] = stock.info.get('regularMarketPrice', 0)
+        except Exception as e:
+            print(f"Error fetching data for {ticker}: {e}")
+            market_data[ticker] = 0 
+            
     for p in holders:
         # .copy() பயன்படுத்துவது பாதுகாப்பானது
         u_data = p_df_all[p_df_all['Holder'] == p['name']].copy()
